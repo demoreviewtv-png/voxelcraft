@@ -261,6 +261,16 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, onSnapshot, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Expose Firebase tools globally
+        window.collection = collection;
+        window.doc = doc;
+        window.getDoc = getDoc;
+        window.setDoc = setDoc;
+        window.updateDoc = updateDoc;
+        window.onSnapshot = onSnapshot;
+        window.serverTimestamp = serverTimestamp;
+        window.getDocs = getDocs;
+
         window.firebaseApp = null;
         window.db = null;
         window.auth = null;
@@ -790,8 +800,8 @@
             } else {
                 generateInitialTerrain();
                 if (window.db && window.currentUser) {
-                    const blocksCol = collection(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_blocks`);
-                    blockUnsub = onSnapshot(blocksCol, (snapshot) => {
+                    const blocksCol = window.collection(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_blocks`);
+                    window.blockUnsub = window.onSnapshot(blocksCol, (snapshot) => {
                         snapshot.docChanges().forEach((change) => {
                             const data = change.doc.data();
                             const key = `${data.x},${data.y},${data.z}`;
@@ -860,8 +870,8 @@
                 saveLocalWorld();
             } else if (window.db && window.currentUser && window.currentRoomId) {
                 try {
-                    await setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', `server_${window.currentRoomId}_blocks`, `${x}_${y}_${z}`), {
-                        x, y, z, type, updatedAt: serverTimestamp()
+                    await window.setDoc(window.doc(window.db, 'artifacts', appId, 'public', 'data', `server_${window.currentRoomId}_blocks`, `${x}_${y}_${z}`), {
+                        x, y, z, type, updatedAt: window.serverTimestamp()
                     });
                 } catch (e) { console.error(e); }
             }
@@ -876,8 +886,8 @@
                 saveLocalWorld();
             } else if (window.db && window.currentUser && window.currentRoomId) {
                 try {
-                    await setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', `server_${window.currentRoomId}_blocks`, `${x}_${y}_${z}`), {
-                        type: 0, updatedAt: serverTimestamp()
+                    await window.setDoc(window.doc(window.db, 'artifacts', appId, 'public', 'data', `server_${window.currentRoomId}_blocks`, `${x}_${y}_${z}`), {
+                        type: 0, updatedAt: window.serverTimestamp()
                     });
                 } catch (e) { console.error(e); }
             }
@@ -918,20 +928,20 @@
 
         function setupMultiplayerSync(roomId) {
             if (!window.db || !window.currentUser) return;
-            const playersCol = collection(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_players`);
+            const playersCol = window.collection(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_players`);
 
             setInterval(() => {
                 if (!window.currentRoomId || window.isOfflineMode) return;
-                setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_players`, window.currentUser.uid), {
+                window.setDoc(window.doc(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_players`, window.currentUser.uid), {
                     uid: window.currentUser.uid,
                     username: window.userProfile.username,
                     skinColor: window.userProfile.skinColor,
                     x: playerPos.x, y: playerPos.y, z: playerPos.z,
-                    updatedAt: serverTimestamp()
+                    updatedAt: window.serverTimestamp()
                 }, { merge: true }).catch(() => {});
             }, 1000);
 
-            playerUnsub = onSnapshot(playersCol, (snapshot) => {
+            window.playerUnsub = window.onSnapshot(playersCol, (snapshot) => {
                 snapshot.docs.forEach((docSnap) => {
                     const data = docSnap.data();
                     if (data.uid === window.currentUser.uid) return;
