@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxelcraft Multiplayer & Offline</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background: #0f172a; user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        .minecraft-btn {
+            background: linear-gradient(to bottom, #3b82f6, #1d4ed8);
+            border: 2px solid #60a5fa;
+            box-shadow: 0 4px 0 #1e3a8a, inset 0 2px 0 rgba(255,255,255,0.4);
+            transition: all 0.1s ease;
+        }
+        .minecraft-btn:hover {
+            background: linear-gradient(to bottom, #60a5fa, #2563eb);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 0 #1e3a8a, inset 0 2px 0 rgba(255,255,255,0.6);
+        }
+        .minecraft-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #1e3a8a;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white">
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900 transition-opacity duration-500">
+        <div class="text-5xl font-extrabold text-amber-400 mb-2 tracking-widest animate-pulse drop-shadow-[0_4px_10px_rgba(245,158,11,0.5)]">VOXELCRAFT</div>
+        <p class="text-slate-400 mb-6 text-sm">Preparing Voxel Engine & World...</p>
+        <div class="w-72 h-3.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+            <div id="loading-bar" class="h-full bg-amber-500 rounded-full transition-all duration-300" style="width: 20%"></div>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/85 backdrop-blur-md">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-2xl w-full max-w-md shadow-2xl relative">
+            <div class="text-center mb-6">
+                <h2 id="auth-title" class="text-3xl font-extrabold text-amber-400 tracking-wide">Welcome Adventurer</h2>
+                <p class="text-xs text-slate-400 mt-1">Sign in with Email & Password or play Offline</p>
+            </div>
+            <form id="auth-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Email Address</label>
+                    <input type="email" id="auth-email" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Password</label>
+                    <input type="password" id="auth-password" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors">
+                </div>
+                <div id="auth-error" class="text-red-400 text-sm hidden font-medium"></div>
+                <button type="submit" id="auth-submit-btn" class="w-full minecraft-btn text-white font-bold py-3.5 rounded-xl transition-all shadow-lg text-lg">Sign In</button>
+            </form>
+            <div class="mt-6 flex flex-col items-center gap-3">
+                <button id="auth-toggle-btn" class="text-sm text-amber-400 hover:underline font-semibold">Need an account? Register</button>
+                <button onclick="enterOfflineModeDirect()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl border border-slate-700 font-medium transition-colors">Play Offline (Guest)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gorgeous Retro-Modern Main Menu -->
+    <div id="main-menu" class="fixed inset-0 z-30 hidden flex flex-col items-center justify-between bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 p-6 md:p-12 overflow-y-auto">
+        
+        <!-- Top bar profile & stats -->
+        <div class="w-full max-w-5xl flex justify-between items-center bg-slate-900/90 border border-slate-800 px-6 py-3 rounded-2xl backdrop-blur-md shadow-lg">
+            <div class="flex items-center gap-3">
+                <div id="nav-avatar" class="w-10 h-10 rounded-xl bg-amber-500 border-2 border-amber-300 flex items-center justify-center font-bold text-slate-950 shadow-inner">V</div>
+                <div>
+                    <div id="user-display-name" class="font-bold text-sm text-amber-400">Player</div>
+                    <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                        <span>Friend Code:</span> <span id="my-friend-code" class="font-mono text-amber-300 select-all font-bold">VC-XXXX</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="openProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-xs px-4 py-2 rounded-xl border border-slate-700 font-bold transition-all">Skin & Profile</button>
+                <button onclick="openFriendsModal()" class="bg-slate-800 hover:bg-slate-700 text-xs px-4 py-2 rounded-xl border border-slate-700 font-bold transition-all flex items-center gap-1.5">
+                    <span>Friends</span>
+                    <span id="friends-badge" class="bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full text-[10px]">0</span>
+                </button>
+                <button onclick="logoutUser()" class="bg-red-950/50 hover:bg-red-900/70 text-xs px-3 py-2 rounded-xl text-red-300 border border-red-900/50 transition-all">Logout</button>
+            </div>
+        </div>
+
+        <!-- Center Logo & Menu Actions -->
+        <div class="my-auto text-center py-8">
+            <h1 class="text-6xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 tracking-tight drop-shadow-md mb-2">VOXELCRAFT</h1>
+            <p class="text-slate-400 text-sm md:text-base mb-8 max-w-md mx-auto">Infinite worlds, user-hosted multiplayer servers, custom skins, and seamless offline building.</p>
+
+            <div class="w-full max-w-md mx-auto space-y-4">
+                <button onclick="startSingleplayer()" class="w-full minecraft-btn text-white font-bold py-4 rounded-2xl text-lg shadow-xl flex items-center justify-center gap-2">
+                    <span>Singleplayer (Offline Mode)</span>
+                </button>
+                <button onclick="openServerBrowser()" class="w-full bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-amber-500 text-white font-bold py-4 rounded-2xl text-lg shadow-xl transition-all flex items-center justify-center gap-2">
+                    <span>Multiplayer Server Browser</span>
+                </button>
+                <button onclick="openCreateServerModal()" class="w-full bg-slate-800 hover:bg-slate-700 border-2 border-slate-700 hover:border-emerald-500 text-white font-bold py-4 rounded-2xl text-lg shadow-xl transition-all flex items-center justify-center gap-2">
+                    <span>Host Custom Server</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Footer version info -->
+        <div class="text-xs text-slate-500 font-medium">Voxelcraft Engine v2.5 Online & Offline Ready</div>
+    </div>
+
+    <!-- Server Browser Modal (User-created servers only) -->
+    <div id="server-browser-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/85 backdrop-blur-md">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-2xl shadow-2xl relative flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-amber-400">User-Created Servers</h2>
+                    <p class="text-xs text-slate-400">Public and Friends-Only servers hosted by players</p>
+                </div>
+                <button onclick="closeServerBrowser()" class="text-slate-400 hover:text-white font-bold text-xl px-3 py-1 bg-slate-800 rounded-xl">✕</button>
+            </div>
+
+            <div class="flex gap-2 mb-4">
+                <button onclick="loadServerList('all')" id="srv-tab-all" class="flex-1 py-2 text-xs font-bold uppercase rounded-xl bg-amber-500 text-slate-950 transition-all">All Public Servers</button>
+                <button onclick="loadServerList('friends')" id="srv-tab-friends" class="flex-1 py-2 text-xs font-bold uppercase rounded-xl bg-slate-800 text-slate-400 transition-all">Friends-Only Servers</button>
+            </div>
+
+            <div id="server-list-container" class="space-y-3 overflow-y-auto flex-1 pr-1">
+                <!-- Populated via JS -->
+            </div>
+
+            <div class="mt-6 flex justify-between items-center pt-4 border-t border-slate-800">
+                <button onclick="openCreateServerModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">+ Host New Server</button>
+                <button onclick="closeServerBrowser()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold px-6 py-2.5 rounded-xl transition-colors">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Host / Create Server Modal -->
+    <div id="create-server-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/85 backdrop-blur-md">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-md shadow-2xl">
+            <h2 class="text-2xl font-bold text-emerald-400 mb-6">Host a Custom Server</h2>
+            <form id="create-server-form" onsubmit="handleCreateServer(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Server Name</label>
+                    <input type="text" id="host-server-name" required placeholder="e.g. Alex's Mega Castle" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Server Type</label>
+                    <select id="host-server-type" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500">
+                        <option value="public">Public (Show in Server Browser)</option>
+                        <option value="friends">Friends-Only (Only friends can join)</option>
+                    </select>
+                </div>
+                <div class="pt-4 flex gap-3">
+                    <button type="button" onclick="closeCreateServerModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold transition-colors">Cancel</button>
+                    <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold transition-colors shadow-lg">Start Server</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Friends Modal -->
+    <div id="friends-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/85 backdrop-blur-md">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-md shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-amber-400">Friends Management</h2>
+                <button onclick="closeFriendsModal()" class="text-slate-400 hover:text-white font-bold text-xl px-3 py-1 bg-slate-800 rounded-xl">✕</button>
+            </div>
+
+            <!-- Add friend input -->
+            <div class="mb-6 bg-slate-800/60 p-4 rounded-2xl border border-slate-700/60 space-y-2">
+                <label class="block text-xs font-bold text-slate-400 uppercase">Add Friend by Code</label>
+                <div class="flex gap-2">
+                    <input type="text" id="friend-code-input" placeholder="e.g. VC-8492" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-mono">
+                    <button onclick="sendFriendRequest()" class="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-4 py-2 text-sm rounded-xl transition-colors">Add</button>
+                </div>
+            </div>
+
+            <!-- Friends list -->
+            <div class="space-y-3 overflow-y-auto flex-1 pr-1" id="friends-list-container">
+                <!-- Populated via JS -->
+            </div>
+
+            <div class="mt-6 flex justify-end">
+                <button onclick="closeFriendsModal()" class="bg-slate-800 hover:bg-slate-700 px-6 py-2.5 rounded-xl text-sm font-bold transition-colors">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skin & Profile Modal -->
+    <div id="profile-modal" class="fixed inset-0 z-40 hidden flex items-center justify-center bg-black/85 backdrop-blur-md">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-lg shadow-2xl">
+            <h2 class="text-2xl font-bold text-amber-400 mb-6">Account Settings & Skin Customizer</h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Username</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="settings-username" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500">
+                        <button onclick="saveUsername()" class="bg-slate-700 hover:bg-slate-600 px-5 py-3 rounded-xl text-sm font-bold transition-colors">Save</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Character Outfit Color</label>
+                    <div class="grid grid-cols-6 gap-3" id="skin-color-picker">
+                        <button onclick="selectSkinColor('#3b82f6')" class="w-12 h-12 rounded-xl bg-blue-500 border-2 border-transparent hover:scale-105 transition-all skin-btn" data-color="#3b82f6"></button>
+                        <button onclick="selectSkinColor('#10b981')" class="w-12 h-12 rounded-xl bg-emerald-500 border-2 border-transparent hover:scale-105 transition-all skin-btn" data-color="#10b981"></button>
+                        <button onclick="selectSkinColor('#f59e0b')" class="w-12 h-12 rounded-xl bg-amber-500 border-2 border-transparent hover:scale-105 transition-all skin-btn" data-color="#f59e0b"></button>
+                        <button onclick="selectSkinColor('#ef4444')" class="w-12 h-12 rounded-xl bg-red-500 border-2 border-transparent hover:scale-105 transition-all skin-btn" data-color="#ef4444"></button>
+                        <button onclick="selectSkinColor('#8b5cf6')" class="w-12 h-12 rounded-xl bg-purple-500 border-2 border-transparent hover:scale-105 transition-all skin-btn" data-color="#8b5cf6"></button>
+                        <button onclick="selectSkinColor('#ec4899')" class="w-12 h-12 rounded-xl bg-pink-500 border-2 border-transparent hover:scale-105 transition-all skin-btn" data-color="#ec4899"></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 flex justify-end">
+                <button onclick="closeProfileModal()" class="minecraft-btn text-white px-8 py-3 rounded-xl font-bold transition-colors">Save & Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game HUD -->
+    <div id="game-hud" class="fixed inset-0 z-20 pointer-events-none hidden">
+        <!-- Crosshair -->
+        <div class="absolute inset-0 flex items-center justify-center">
+            <div class="w-2 h-2 bg-white/90 rounded-full shadow-[0_0_6px_rgba(0,0,0,0.9)] border border-black/40"></div>
+        </div>
+
+        <!-- Room info top-left -->
+        <div class="absolute top-4 left-4 bg-slate-900/90 border border-slate-800 px-4 py-2.5 rounded-2xl backdrop-blur-md pointer-events-auto flex items-center gap-4 shadow-xl">
+            <div>
+                <div id="hud-room-name" class="text-xs font-bold text-amber-400 uppercase tracking-wider">Mode: Singleplayer</div>
+                <div id="hud-mode-desc" class="text-[11px] text-slate-400">Local Sandbox (Offline)</div>
+            </div>
+            <button onclick="returnToMainMenu()" class="bg-slate-800 hover:bg-slate-700 text-xs px-3 py-1.5 rounded-xl text-slate-300 font-bold transition-colors">Menu</button>
+        </div>
+
+        <!-- Controls guide top-right -->
+        <div class="absolute top-4 right-4 bg-slate-900/90 border border-slate-800 px-4 py-3 rounded-2xl backdrop-blur-md text-xs space-y-1 text-slate-300 shadow-xl">
+            <div><span class="text-amber-400 font-bold">WASD</span>: Move</div>
+            <div><span class="text-amber-400 font-bold">SPACE</span>: Jump</div>
+            <div><span class="text-amber-400 font-bold">L-Click</span>: Break Block</div>
+            <div><span class="text-amber-400 font-bold">R-Click</span>: Place Block</div>
+            <div><span class="text-amber-400 font-bold">1-8</span>: Select Block</div>
+        </div>
+
+        <!-- Hotbar bottom-center -->
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-slate-800 p-2.5 rounded-2xl backdrop-blur-md pointer-events-auto flex gap-2 shadow-2xl" id="hotbar">
+            <!-- Populated via JS -->
+        </div>
+    </div>
+
+    <!-- Three.js Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Firebase SDK Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, onSnapshot, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.firebaseApp = null;
+        window.db = null;
+        window.auth = null;
+        window.currentUser = null;
+        window.currentRoomId = null;
+        window.isOfflineMode = false;
+        window.isRegisterMode = false;
+
+        window.userProfile = {
+            username: "Player",
+            skinColor: "#10b981",
+            friendCode: "VC-" + Math.floor(1000 + Math.random() * 9000),
+            friends: []
+        };
+
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
+            apiKey: "AIzaSyDd12gyU3Vksk6kbepjpaTDNUgUdaTURU0",
+            authDomain: "voxelcraft-ef33f.firebaseapp.com",
+            projectId: "voxelcraft-ef33f",
+            storageBucket: "voxelcraft-ef33f.firebasestorage.app",
+            messagingSenderId: "744421913795",
+            appId: "1:744421913795:web:66f9c88572ef6d8d7c5e76"
+        }));
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'voxelcraft-default-app';
+
+        try {
+            window.firebaseApp = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.firebaseApp);
+            window.auth = getAuth(window.firebaseApp);
+        } catch (e) {
+            console.error("Firebase init error:", e);
+        }
+
+        window.onload = async () => {
+            const loadingBar = document.getElementById('loading-bar');
+            loadingBar.style.width = '60%';
+
+            onAuthStateChanged(window.auth, async (user) => {
+                if (user) {
+                    window.currentUser = user;
+                    window.isOfflineMode = false;
+                    document.getElementById('auth-modal').classList.add('hidden');
+                    document.getElementById('main-menu').classList.remove('hidden');
+                    await loadUserProfile(user);
+                    loadingBar.style.width = '100%';
+                    setTimeout(() => {
+                        document.getElementById('loading-screen').style.opacity = '0';
+                        setTimeout(() => document.getElementById('loading-screen').remove(), 500);
+                    }, 300);
+                } else {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(window.auth, __initial_auth_token);
+                        } else {
+                            document.getElementById('loading-screen').style.opacity = '0';
+                            setTimeout(() => document.getElementById('loading-screen').remove(), 500);
+                            document.getElementById('auth-modal').classList.remove('hidden');
+                        }
+                    } catch (err) {
+                        document.getElementById('auth-modal').classList.remove('hidden');
+                    }
+                }
+            });
+
+            initGameEngine();
+        };
+
+        const authForm = document.getElementById('auth-form');
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+            const errEl = document.getElementById('auth-error');
+            errEl.classList.add('hidden');
+
+            try {
+                if (window.isRegisterMode) {
+                    const cred = await createUserWithEmailAndPassword(window.auth, email, password);
+                    const defaultName = email.split('@')[0];
+                    window.userProfile.username = defaultName;
+                    await setDoc(doc(window.db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'data'), window.userProfile);
+                } else {
+                    await signInWithEmailAndPassword(window.auth, email, password);
+                }
+            } catch (error) {
+                errEl.textContent = error.message;
+                errEl.classList.remove('hidden');
+            }
+        });
+
+        const authToggleBtn = document.getElementById('auth-toggle-btn');
+        authToggleBtn.addEventListener('click', () => {
+            window.isRegisterMode = !window.isRegisterMode;
+            document.getElementById('auth-title').textContent = window.isRegisterMode ? "Create Account" : "Welcome Adventurer";
+            document.getElementById('auth-submit-btn').textContent = window.isRegisterMode ? "Register Account" : "Sign In";
+            authToggleBtn.textContent = window.isRegisterMode ? "Already have an account? Login" : "Need an account? Register";
+        });
+
+        window.enterOfflineModeDirect = () => {
+            window.isOfflineMode = true;
+            window.currentUser = { uid: 'offline-guest' };
+            document.getElementById('auth-modal').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+            document.getElementById('user-display-name').textContent = "Offline Player";
+            document.getElementById('my-friend-code').textContent = window.userProfile.friendCode;
+        };
+
+        window.logoutUser = async () => {
+            if (!window.isOfflineMode && window.auth) await signOut(window.auth);
+            location.reload();
+        };
+
+        async function loadUserProfile(user) {
+            try {
+                const profileRef = doc(window.db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
+                const snap = await getDoc(profileRef);
+                if (snap.exists()) {
+                    window.userProfile = snap.data();
+                    if (!window.userProfile.friendCode) {
+                        window.userProfile.friendCode = "VC-" + Math.floor(1000 + Math.random() * 9000);
+                    }
+                } else {
+                    const defaultName = user.email ? user.email.split('@')[0] : 'Player';
+                    window.userProfile.username = defaultName;
+                    await setDoc(profileRef, window.userProfile);
+                }
+                document.getElementById('user-display-name').textContent = window.userProfile.username;
+                document.getElementById('settings-username').value = window.userProfile.username;
+                document.getElementById('my-friend-code').textContent = window.userProfile.friendCode;
+                highlightSkinBtn(window.userProfile.skinColor);
+                renderFriendsList();
+            } catch (e) {
+                console.error("Error loading profile:", e);
+            }
+        }
+
+        window.openProfileModal = () => document.getElementById('profile-modal').classList.remove('hidden');
+        window.closeProfileModal = () => {
+            document.getElementById('profile-modal').classList.add('hidden');
+            document.getElementById('user-display-name').textContent = window.userProfile.username;
+        };
+
+        window.saveUsername = async () => {
+            const newName = document.getElementById('settings-username').value.trim();
+            if (!newName) return;
+            window.userProfile.username = newName;
+            if (!window.isOfflineMode && window.currentUser) {
+                const profileRef = doc(window.db, 'artifacts', appId, 'users', window.currentUser.uid, 'profile', 'data');
+                await setDoc(profileRef, window.userProfile, { merge: true });
+            }
+            alert("Username updated successfully!");
+            document.getElementById('user-display-name').textContent = newName;
+        };
+
+        window.selectSkinColor = async (color) => {
+            window.userProfile.skinColor = color;
+            highlightSkinBtn(color);
+            if (!window.isOfflineMode && window.currentUser) {
+                const profileRef = doc(window.db, 'artifacts', appId, 'users', window.currentUser.uid, 'profile', 'data');
+                await setDoc(profileRef, window.userProfile, { merge: true });
+            }
+        };
+
+        function highlightSkinBtn(color) {
+            document.querySelectorAll('.skin-btn').forEach(btn => {
+                if (btn.getAttribute('data-color') === color) {
+                    btn.classList.add('border-white', 'scale-105');
+                } else {
+                    btn.classList.remove('border-white', 'scale-105');
+                }
+            });
+        }
+
+        // Friends System
+        window.openFriendsModal = () => {
+            document.getElementById('friends-modal').classList.remove('hidden');
+            renderFriendsList();
+        };
+        window.closeFriendsModal = () => document.getElementById('friends-modal').classList.add('hidden');
+
+        window.sendFriendRequest = async () => {
+            const code = document.getElementById('friend-code-input').value.trim().toUpperCase();
+            if (!code) return;
+            if (code === window.userProfile.friendCode) {
+                alert("You cannot add yourself as a friend!");
+                return;
+            }
+            if (!window.userProfile.friends) window.userProfile.friends = [];
+            if (window.userProfile.friends.includes(code)) {
+                alert("Friend already added!");
+                return;
+            }
+            window.userProfile.friends.push(code);
+            if (!window.isOfflineMode && window.currentUser) {
+                const profileRef = doc(window.db, 'artifacts', appId, 'users', window.currentUser.uid, 'profile', 'data');
+                await setDoc(profileRef, window.userProfile, { merge: true });
+            }
+            document.getElementById('friend-code-input').value = '';
+            renderFriendsList();
+            alert("Friend added successfully!");
+        };
+
+        function renderFriendsList() {
+            const container = document.getElementById('friends-list-container');
+            const friends = window.userProfile.friends || [];
+            document.getElementById('friends-badge').textContent = friends.length;
+            if (friends.length === 0) {
+                container.innerHTML = `<div class="text-center text-slate-500 py-6 text-sm">No friends added yet. Share your code <span class="font-mono text-amber-400">${window.userProfile.friendCode}</span> with others!</div>`;
+                return;
+            }
+            container.innerHTML = friends.map(code => `
+                <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700/60 flex items-center justify-between">
+                    <div>
+                        <div class="font-bold text-sm text-slate-200">Friend Tag</div>
+                        <div class="text-xs font-mono text-amber-400">${code}</div>
+                    </div>
+                    <button onclick="removeFriend('${code}')" class="text-xs bg-red-950/60 hover:bg-red-900 text-red-300 px-3 py-1.5 rounded-xl transition-colors">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        window.removeFriend = async (code) => {
+            window.userProfile.friends = window.userProfile.friends.filter(c => c !== code);
+            if (!window.isOfflineMode && window.currentUser) {
+                const profileRef = doc(window.db, 'artifacts', appId, 'users', window.currentUser.uid, 'profile', 'data');
+                await setDoc(profileRef, window.userProfile, { merge: true });
+            }
+            renderFriendsList();
+        };
+
+        // Server Browser & Host
+        window.openServerBrowser = () => {
+            if (window.isOfflineMode) {
+                alert("Multiplayer requires login or account session.");
+                return;
+            }
+            document.getElementById('server-browser-modal').classList.remove('hidden');
+            loadServerList('all');
+        };
+        window.closeServerBrowser = () => document.getElementById('server-browser-modal').classList.add('hidden');
+
+        window.openCreateServerModal = () => {
+            if (window.isOfflineMode) {
+                alert("Hosting servers requires online mode.");
+                return;
+            }
+            document.getElementById('create-server-modal').classList.remove('hidden');
+        };
+        window.closeCreateServerModal = () => document.getElementById('create-server-modal').classList.add('hidden');
+
+        window.loadServerList = async (filter) => {
+            if (filter === 'all') {
+                document.getElementById('srv-tab-all').className = "flex-1 py-2 text-xs font-bold uppercase rounded-xl bg-amber-500 text-slate-950 transition-all";
+                document.getElementById('srv-tab-friends').className = "flex-1 py-2 text-xs font-bold uppercase rounded-xl bg-slate-800 text-slate-400 transition-all";
+            } else {
+                document.getElementById('srv-tab-friends').className = "flex-1 py-2 text-xs font-bold uppercase rounded-xl bg-amber-500 text-slate-950 transition-all";
+                document.getElementById('srv-tab-all').className = "flex-1 py-2 text-xs font-bold uppercase rounded-xl bg-slate-800 text-slate-400 transition-all";
+            }
+
+            const container = document.getElementById('server-list-container');
+            container.innerHTML = `<div class="text-center text-slate-400 py-8 text-sm">Loading user servers...</div>`;
+
+            try {
+                const serversCol = collection(window.db, 'artifacts', appId, 'public', 'data', 'servers_list');
+                const snap = await getDocs(serversCol);
+                const servers = [];
+                snap.forEach(d => servers.push(d.data()));
+
+                let filtered = servers;
+                if (filter === 'friends') {
+                    const myFriends = window.userProfile.friends || [];
+                    filtered = servers.filter(s => s.type === 'friends' && (s.hostUid === window.currentUser.uid || myFriends.includes(s.hostFriendCode)));
+                }
+
+                if (filtered.length === 0) {
+                    container.innerHTML = `<div class="text-center text-slate-500 py-10 text-sm">No user-created servers found. Click "Host New Server" to create one!</div>`;
+                    return;
+                }
+
+                container.innerHTML = filtered.map(srv => `
+                    <div class="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl flex items-center justify-between hover:border-amber-500/50 transition-all">
+                        <div>
+                            <div class="font-bold text-amber-300 text-base flex items-center gap-2">
+                                <span>${srv.name}</span>
+                                <span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full uppercase">${srv.type}</span>
+                            </div>
+                            <div class="text-xs text-slate-400 mt-0.5">Host: <span class="text-slate-200 font-medium">${srv.hostName}</span></div>
+                        </div>
+                        <button onclick="joinServerRoom('${srv.id}', '${srv.name}')" class="minecraft-btn text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-md">Join Server</button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error("Error loading servers:", e);
+                container.innerHTML = `<div class="text-center text-red-400 py-8 text-sm">Error loading servers. Try again later.</div>`;
+            }
+        };
+
+        window.handleCreateServer = async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('host-server-name').value.trim();
+            const type = document.getElementById('host-server-type').value;
+            if (!name) return;
+
+            const serverId = 'srv_' + Math.random().toString(36).substring(2, 9);
+            const serverData = {
+                id: serverId,
+                name: name,
+                type: type,
+                hostUid: window.currentUser.uid,
+                hostName: window.userProfile.username,
+                hostFriendCode: window.userProfile.friendCode,
+                createdAt: serverTimestamp()
+            };
+
+            try {
+                await setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', 'servers_list', serverId), serverData);
+                closeCreateServerModal();
+                closeServerBrowser();
+                joinServerRoom(serverId, name);
+            } catch (err) {
+                console.error("Error creating server:", err);
+                alert("Failed to create server.");
+            }
+        };
+
+        window.startSingleplayer = () => {
+            window.isOfflineMode = true;
+            window.currentRoomId = 'offline_singleplayer';
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            document.getElementById('hud-room-name').textContent = "Mode: Singleplayer";
+            document.getElementById('hud-mode-desc').textContent = "Offline Local Sandbox";
+            startGameSession('offline_singleplayer', true);
+        };
+
+        window.joinServerRoom = (serverId, serverName) => {
+            window.isOfflineMode = false;
+            window.currentRoomId = serverId;
+            document.getElementById('server-browser-modal').classList.add('hidden');
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            document.getElementById('hud-room-name').textContent = `Server: ${serverName}`;
+            document.getElementById('hud-mode-desc').textContent = "Online Multiplayer";
+            startGameSession(serverId, false);
+        };
+
+        window.returnToMainMenu = () => {
+            if (window.blockUnsub) window.blockUnsub();
+            if (window.playerUnsub) window.playerUnsub();
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+            window.currentRoomId = null;
+            if (controls) controls.unlock();
+        };
+    </script>
+
+    <!-- 3D Voxel Engine & Gameplay Script -->
+    <script>
+        let scene, camera, renderer, controls;
+        let worldBlocks = {};
+        let remotePlayers = {};
+        let blockUnsub = null, playerUnsub = null;
+        
+        let playerPos = { x: 0, y: 15, z: 0 };
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        let isGrounded = false;
+        const moveState = { forward: false, backward: false, left: false, right: false };
+        let selectedBlockType = 1;
+
+        const blockTypes = {
+            1: { name: 'Grass', color: 0x55aa55 },
+            2: { name: 'Dirt', color: 0x8b5a2b },
+            3: { name: 'Stone', color: 0x888888 },
+            4: { name: 'Wood', color: 0xa0522d },
+            5: { name: 'Leaves', color: 0x2e8b57 },
+            6: { name: 'Glass', color: 0xaaddee },
+            7: { name: 'Gold', color: 0xffd700 },
+            8: { name: 'Brick', color: 0xb22222 }
+        };
+
+        function initGameEngine() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.015);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+            dirLight.position.set(50, 100, 50);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            setupPointerControls();
+            buildHotbar();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            animate();
+        }
+
+        function buildHotbar() {
+            const hotbar = document.getElementById('hotbar');
+            hotbar.innerHTML = '';
+            for (let id = 1; id <= 8; id++) {
+                const b = blockTypes[id];
+                const btn = document.createElement('button');
+                btn.className = `w-12 h-12 rounded-xl flex flex-col items-center justify-center border-2 transition-all ${selectedBlockType === id ? 'border-amber-400 bg-slate-800 scale-105 shadow-lg' : 'border-slate-700 bg-slate-800/70 hover:bg-slate-800'}`;
+                btn.innerHTML = `<div class="w-6 h-6 rounded-md shadow-inner" style="background-color: #${b.color.toString(16).padStart(6, '0')}"></div><span class="text-[9px] text-slate-400 mt-0.5">${id}</span>`;
+                btn.onclick = () => {
+                    selectedBlockType = id;
+                    buildHotbar();
+                };
+                hotbar.appendChild(btn);
+            }
+        }
+
+        let isLocked = false;
+        let euler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const PI_2 = Math.PI / 2;
+
+        function setupPointerControls() {
+            const canvas = renderer.domElement;
+
+            canvas.addEventListener('click', () => {
+                if (window.currentRoomId && !isLocked) canvas.requestPointerLock();
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                isLocked = document.pointerLockElement === canvas;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isLocked) return;
+                euler.setFromQuaternion(camera.quaternion);
+                euler.y -= e.movementX * 0.002;
+                euler.x -= e.movementY * 0.002;
+                euler.x = Math.max(-PI_2, Math.min(PI_2, euler.x));
+                camera.quaternion.setFromEuler(euler);
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (!isLocked) return;
+                if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = true;
+                if (e.code === 'KeyS' || e.code === 'ArrowDown') moveState.backward = true;
+                if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = true;
+                if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = true;
+                if (e.code === 'Space' && isGrounded) {
+                    playerVelocity.y = 0.16;
+                    isGrounded = false;
+                }
+                if (e.key >= '1' && e.key <= '8') {
+                    selectedBlockType = parseInt(e.key);
+                    buildHotbar();
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = false;
+                if (e.code === 'KeyS' || e.code === 'ArrowDown') moveState.backward = false;
+                if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = false;
+                if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = false;
+            });
+
+            window.addEventListener('mousedown', (e) => {
+                if (!isLocked || !window.currentRoomId) return;
+                performRaycastAction(e.button === 2 ? 'place' : 'break');
+            });
+
+            window.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+        function performRaycastAction(action) {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersectables = [];
+            scene.traverse((obj) => {
+                if (obj.isMesh && obj.userData && obj.userData.isBlock) intersectables.push(obj);
+            });
+
+            const intersects = raycaster.intersectObjects(intersectables);
+            if (intersects.length > 0) {
+                const hit = intersects[0];
+                if (hit.distance > 8) return;
+                const pos = hit.object.position;
+                if (action === 'break') {
+                    removeBlockAt(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z));
+                } else if (action === 'place') {
+                    const normal = hit.face.normal;
+                    const targetX = Math.round(pos.x + normal.x);
+                    const targetY = Math.round(pos.y + normal.y);
+                    const targetZ = Math.round(pos.z + normal.z);
+                    
+                    if (Math.abs(playerPos.x - targetX) < 0.8 && Math.abs(playerPos.y - targetY) < 1.8 && Math.abs(playerPos.z - targetZ) < 0.8) return;
+                    placeBlockAt(targetX, targetY, targetZ, selectedBlockType);
+                }
+            }
+        }
+
+        function startGameSession(roomId, isOffline) {
+            const toRemove = [];
+            scene.traverse((obj) => {
+                if (obj.isMesh && obj.userData && obj.userData.isBlock) toRemove.push(obj);
+            });
+            toRemove.forEach(o => scene.remove(o));
+            worldBlocks = {};
+
+            if (isOffline) {
+                loadLocalWorld();
+            } else {
+                generateInitialTerrain();
+                if (window.db && window.currentUser) {
+                    const blocksCol = collection(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_blocks`);
+                    blockUnsub = onSnapshot(blocksCol, (snapshot) => {
+                        snapshot.docChanges().forEach((change) => {
+                            const data = change.doc.data();
+                            const key = `${data.x},${data.y},${data.z}`;
+                            if (change.type === 'added' || change.type === 'modified') {
+                                if (!worldBlocks[key] && data.type > 0) {
+                                    createVoxelMesh(data.x, data.y, data.z, data.type);
+                                    worldBlocks[key] = data.type;
+                                }
+                            } else if (change.type === 'removed' || data.type === 0) {
+                                removeVoxelMesh(data.x, data.y, data.z);
+                                delete worldBlocks[key];
+                            }
+                        });
+                    }, (err) => console.error(err));
+                    setupMultiplayerSync(roomId);
+                }
+            }
+        }
+
+        function generateInitialTerrain() {
+            for (let x = -8; x <= 8; x++) {
+                for (let z = -8; z <= 8; z++) {
+                    const height = Math.floor(Math.sin(x * 0.3) * Math.cos(z * 0.3) * 2) + 1;
+                    for (let y = -3; y <= height; y++) {
+                        let type = 2;
+                        if (y === height) type = 1;
+                        if (y < 0) type = 3;
+                        createVoxelMesh(x, y, z, type);
+                        worldBlocks[`${x},${y},${z}`] = type;
+                    }
+                }
+            }
+        }
+
+        function loadLocalWorld() {
+            const saved = localStorage.getItem('voxelcraft_offline_world');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    worldBlocks = parsed;
+                    for (const key in worldBlocks) {
+                        const [x, y, z] = key.split(',').map(Number);
+                        createVoxelMesh(x, y, z, worldBlocks[key]);
+                    }
+                    return;
+                } catch (e) {
+                    console.error("Local save load error", e);
+                }
+            }
+            generateInitialTerrain();
+            saveLocalWorld();
+        }
+
+        function saveLocalWorld() {
+            if (window.isOfflineMode) {
+                localStorage.setItem('voxelcraft_offline_world', JSON.stringify(worldBlocks));
+            }
+        }
+
+        async function placeBlockAt(x, y, z, type) {
+            const key = `${x},${y},${z}`;
+            worldBlocks[key] = type;
+            createVoxelMesh(x, y, z, type);
+
+            if (window.isOfflineMode) {
+                saveLocalWorld();
+            } else if (window.db && window.currentUser && window.currentRoomId) {
+                try {
+                    await setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', `server_${window.currentRoomId}_blocks`, `${x}_${y}_${z}`), {
+                        x, y, z, type, updatedAt: serverTimestamp()
+                    });
+                } catch (e) { console.error(e); }
+            }
+        }
+
+        async function removeBlockAt(x, y, z) {
+            const key = `${x},${y},${z}`;
+            delete worldBlocks[key];
+            removeVoxelMesh(x, y, z);
+
+            if (window.isOfflineMode) {
+                saveLocalWorld();
+            } else if (window.db && window.currentUser && window.currentRoomId) {
+                try {
+                    await setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', `server_${window.currentRoomId}_blocks`, `${x}_${y}_${z}`), {
+                        type: 0, updatedAt: serverTimestamp()
+                    });
+                } catch (e) { console.error(e); }
+            }
+        }
+
+        const voxelMaterials = {};
+        function getVoxelMaterial(type) {
+            if (voxelMaterials[type]) return voxelMaterials[type];
+            const b = blockTypes[type] || blockTypes[1];
+            const mat = new THREE.MeshLambertMaterial({ 
+                color: b.color, 
+                transparent: type === 6, 
+                opacity: type === 6 ? 0.6 : 1.0 
+            });
+            voxelMaterials[type] = mat;
+            return mat;
+        }
+
+        function createVoxelMesh(x, y, z, type) {
+            removeVoxelMesh(x, y, z);
+            const mesh = new THREE.Mesh(boxGeometry, getVoxelMaterial(type));
+            mesh.position.set(x, y, z);
+            mesh.userData = { isBlock: true, x, y, z };
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+        }
+
+        function removeVoxelMesh(x, y, z) {
+            const toRemove = [];
+            scene.traverse((obj) => {
+                if (obj.isMesh && obj.userData && obj.userData.isBlock && obj.userData.x === x && obj.userData.y === y && obj.userData.z === z) {
+                    toRemove.push(obj);
+                }
+            });
+            toRemove.forEach(o => scene.remove(o));
+        }
+
+        function setupMultiplayerSync(roomId) {
+            if (!window.db || !window.currentUser) return;
+            const playersCol = collection(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_players`);
+
+            setInterval(() => {
+                if (!window.currentRoomId || window.isOfflineMode) return;
+                setDoc(doc(window.db, 'artifacts', appId, 'public', 'data', `server_${roomId}_players`, window.currentUser.uid), {
+                    uid: window.currentUser.uid,
+                    username: window.userProfile.username,
+                    skinColor: window.userProfile.skinColor,
+                    x: playerPos.x, y: playerPos.y, z: playerPos.z,
+                    updatedAt: serverTimestamp()
+                }, { merge: true }).catch(() => {});
+            }, 1000);
+
+            playerUnsub = onSnapshot(playersCol, (snapshot) => {
+                snapshot.docs.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data.uid === window.currentUser.uid) return;
+                    if (!remotePlayers[data.uid]) {
+                        const group = new THREE.Group();
+                        const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 0.8), new THREE.MeshLambertMaterial({ color: data.skinColor || 0x10b981 }));
+                        bodyMesh.position.y = 0.9;
+                        group.add(bodyMesh);
+                        scene.add(group);
+                        remotePlayers[data.uid] = group;
+                    }
+                    remotePlayers[data.uid].position.set(data.x, data.y - 0.9, data.z);
+                });
+            }, (err) => console.error(err));
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (window.currentRoomId && isLocked) {
+                const speed = 0.11;
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir);
+                dir.y = 0;
+                dir.normalize();
+
+                const sideDir = new THREE.Vector3(-dir.z, 0, dir.x);
+                let moveX = 0, moveZ = 0;
+                if (moveState.forward) { moveX += dir.x * speed; moveZ += dir.z * speed; }
+                if (moveState.backward) { moveX -= dir.x * speed; moveZ -= dir.z * speed; }
+                if (moveState.left) { moveX -= sideDir.x * speed; moveZ -= sideDir.z * speed; }
+                if (moveState.right) { moveX += sideDir.x * speed; moveZ += sideDir.z * speed; }
+
+                playerPos.x += moveX;
+                playerPos.z += moveZ;
+
+                playerVelocity.y -= 0.008;
+                playerPos.y += playerVelocity.y;
+
+                const floorKey = `${Math.round(playerPos.x)},${Math.floor(playerPos.y - 1.8)},${Math.round(playerPos.z)}`;
+                if (worldBlocks[floorKey]) {
+                    playerPos.y = Math.floor(playerPos.y - 1.8) + 2.8;
+                    playerVelocity.y = 0;
+                    isGrounded = true;
+                } else if (playerPos.y < -15) {
+                    playerPos.x = 0; playerPos.y = 15; playerPos.z = 0;
+                    playerVelocity.y = 0;
+                }
+
+                camera.position.set(playerPos.x, playerPos.y, playerPos.z);
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
